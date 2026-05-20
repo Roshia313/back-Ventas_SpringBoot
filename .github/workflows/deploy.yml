@@ -1,0 +1,49 @@
+#back-Ventas_SpringBoot .github
+name: CI/CD Pipeline - Back Ventas a ECR
+on:
+  push:
+    branches:
+      - deploy
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: back-ventas
+  INSTANCE_ID: i-0b674a261f4ca105c
+jobs:
+  build-and-push:
+    name: Build y Push a AWS ECR
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout del codigo
+      uses: actions/checkout@v4
+    - name: Configurar credenciales de AWS
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Iniciar sesion en Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+    - name: Construir y Subir la imagen Docker
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: latest
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./Springboot-API-REST
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+    - name: Desplegar en EC2 via SSM
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+      run: |
+        aws ssm send-command \
+          --instance-ids ${{ env.INSTANCE_ID }} \
+          --document-name "AWS-RunShellScript" \
+          --parameters commands="[
+            'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}',
+            'docker stop back-ventas-app || true',
+            'docker rm back-ventas-app || true',
+            'docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest',
+            'docker run -d --name back-ventas-app -p 8080:8080 -e SPRING_DATASOURCE_URL=${{ secrets.DB_URL }} -e SPRING_DATASOURCE_USERNAME=${{ secrets.DB_USERNAME }} -e SPRING_DATASOURCE_PASSWORD=${{ secrets.DB_PASSWORD }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest'
+          ]" \
+          --region ${{ env.AWS_REGION }}
