@@ -7,7 +7,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: back-ventas
-  INSTANCE_ID: i-0b674a261f4ca105c
+  INSTANCE_ID: i-0fb678ceb2778da07
 jobs:
   build-and-push:
     name: Build y Push a AWS ECR
